@@ -304,9 +304,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GPTManager
   apiKey: 
-  autoTestOnPlay: 0
   model: gpt-4.1-mini
   systemPrompt: You are a fantasy game narrator.
+  timeoutSeconds: 30
+  temperature: 0.2
+  maxTokens: 800
 --- !u!4 &478211557
 Transform:
   m_ObjectHideFlags: 0
@@ -445,6 +447,55 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1932625022
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1932625024}
+  - component: {fileID: 1932625023}
+  m_Layer: 0
+  m_Name: StoryGenerator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1932625023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1932625022}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aac3d9dfe8781754abd4603b90664420, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoryGenerator
+  gpt: {fileID: 478211556}
+  seed: "\uD3D0\uD5C8\uAC00 \uB41C \uAD00\uBB38 \uB3C4\uC2DC, \uC6A9\uBCD1\uB2E8
+    \uC6B4\uC601, \uD37C\uB9C8\uB370\uC2A4"
+  retryOnceOnParseFail: 1
+  autoGenerateOnPlay: 1
+--- !u!4 &1932625024
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1932625022}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 6.2594, y: 1.41255, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -453,3 +504,4 @@ SceneRoots:
   - {fileID: 1546120329}
   - {fileID: 280968453}
   - {fileID: 478211557}
+  - {fileID: 1932625024}

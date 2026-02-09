@@ -6,12 +6,9 @@ using UnityEngine.Networking;
 
 public class GPTManager : MonoBehaviour
 {
-    [Header("GPT Settings")]
-    [Tooltip("Inspector에 키를 넣고, GitHub에 올릴 땐 비워둘것.")]
+    [Header("API Key")]
+    [Tooltip("Inspector에만 넣고, GitHub에 올릴 땐 비워두세요.")]
     [SerializeField] private string apiKey = "";
-
-    [Tooltip("플레이 시작 시 자동 테스트 호출 (디버그용)")]
-    [SerializeField] private bool autoTestOnPlay = false;
 
     [Header("Model")]
     [SerializeField] private string model = "gpt-4.1-mini";
@@ -19,41 +16,102 @@ public class GPTManager : MonoBehaviour
     [TextArea(2, 5)]
     [SerializeField] private string systemPrompt = "You are a fantasy game narrator.";
 
+    [Header("Request Options")]
+    [SerializeField] private int timeoutSeconds = 30;
+    [SerializeField] private float temperature = 0.2f;
+    [SerializeField] private int maxTokens = 800;
+
     private const string URL = "https://api.openai.com/v1/chat/completions";
 
-   
-   // 외부에서 쓰는 호출 함수
-   
-    public void Request(string prompt, Action<string> onSuccess, Action<string> onError = null)
+    public void RequestText(string prompt, Action<string> onSuccess, Action<string> onError = null)
     {
-        StartCoroutine(AskGPT(prompt, onSuccess, onError));
+        StartCoroutine(SendChatCompletion(prompt, jsonMode: false, onSuccess, onError));
     }
 
-   // 실제 GPT 호출 코루틴
- 
-    private IEnumerator AskGPT(string prompt, Action<string> onSuccess, Action<string> onError)
+
+    public void RequestJson(string prompt, Action<string> onSuccessJson, Action<string> onError = null)
     {
+        StartCoroutine(SendChatCompletion(prompt, jsonMode: true,
+            onSuccess: (content) =>
+            {
+                
+                if (TryExtractJsonObject(content, out var json))
+                    onSuccessJson?.Invoke(json);
+                else
+                    onError?.Invoke("[GPT JSON ERROR] JSON object를 추출하지 못했습니다.\nRAW:\n" + content);
+            },
+            onError: onError
+        ));
+    }
+
+
+    public void RequestJsonParsed<T>(string prompt, Action<T> onSuccess, Action<string> onError = null)
+    {
+        RequestJson(prompt,
+            (json) =>
+            {
+                try
+                {
+                    var obj = JsonUtility.FromJson<T>(json);
+                    if (obj == null)
+                    {
+                        onError?.Invoke("[GPT JSON PARSE ERROR] FromJson 결과가 null 입니다.\nJSON:\n" + json);
+                        return;
+                    }
+                    onSuccess?.Invoke(obj);
+                }
+                catch (Exception e)
+                {
+                    onError?.Invoke("[GPT JSON PARSE EXCEPTION] " + e.Message + "\nJSON:\n" + json);
+                }
+            },
+            onError
+        );
+    }
+
+    private IEnumerator SendChatCompletion(string prompt, bool jsonMode, Action<string> onSuccess, Action<string> onError)
+    {
+        prompt ??= "";
+
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             onError?.Invoke("[GPT ERROR] API Key가 비어있습니다. Inspector에서 입력하세요.");
             yield break;
         }
 
-        // JSON 문자열에 들어갈 특수문자 이스케이프 처리
-        string safePrompt = EscapeForJson(prompt);
-        string safeSystem = EscapeForJson(systemPrompt);
+     
+        string finalSystem = jsonMode
+            ? (systemPrompt + " Output must be a valid JSON object only. Do not include any extra text.")
+            : systemPrompt;
+
+        string finalUser = jsonMode
+            ? ("반드시 JSON 객체만 출력해. 설명/코드블록/마크다운/추가 텍스트 금지.\n\n" + prompt)
+            : prompt;
+
+        string safeSystem = EscapeForJson(finalSystem);
+        string safeUser = EscapeForJson(finalUser);
+
+     
+        string responseFormatPart = jsonMode
+            ? ",\"response_format\":{\"type\":\"json_object\"}"
+            : "";
 
         string bodyJson =
             "{"
-            + $"\"model\":\"{model}\","
+            + $"\"model\":\"{EscapeForJson(model)}\","
+            + $"\"temperature\":{temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)},"
+            + $"\"max_tokens\":{maxTokens},"
             + "\"messages\":["
             + $"{{\"role\":\"system\",\"content\":\"{safeSystem}\"}},"
-            + $"{{\"role\":\"user\",\"content\":\"{safePrompt}\"}}"
+            + $"{{\"role\":\"user\",\"content\":\"{safeUser}\"}}"
             + "]"
+            + responseFormatPart
             + "}";
 
         using (UnityWebRequest request = new UnityWebRequest(URL, "POST"))
         {
+            request.timeout = timeoutSeconds;
+
             byte[] body = Encoding.UTF8.GetBytes(bodyJson);
             request.uploadHandler = new UploadHandlerRaw(body);
             request.downloadHandler = new DownloadHandlerBuffer();
@@ -73,7 +131,7 @@ public class GPTManager : MonoBehaviour
 
             string raw = request.downloadHandler.text;
 
-            // JSON 파싱: content만 뽑기
+       
             string content = TryExtractContent(raw, out string parseError);
             if (content == null)
             {
@@ -83,73 +141,43 @@ public class GPTManager : MonoBehaviour
                 yield break;
             }
 
-            onSuccess?.Invoke(content);
+            onSuccess?.Invoke(content.Trim());
         }
     }
 
-    //  테스트 전용 (Inspector 우클릭 메뉴)
-  
-    [ContextMenu("GPT Test Call")]
-    public void TestGPTCall()
-    {
-        Debug.Log("[GPT TEST] 호출 시작");
 
-        Request(
-            "용병단이 첫 관문 앞에 섰을 때의 짧은 묘사 한 문장",
-            (text) =>
-            {
-                Debug.Log("[GPT TEST RESULT] (content only)");
-                Debug.Log(text);
-            },
-            (err) =>
-            {
-                Debug.LogError("[GPT TEST FAILED]");
-                Debug.LogError(err);
-            }
-        );
-    }
-
-    private void Awake()
-    {
-        if (autoTestOnPlay)
-            TestGPTCall();
-    }
-
-   
-    //  응답 파싱용 클래스들
     [Serializable] private class GPTResponse { public Choice[] choices; }
     [Serializable] private class Choice { public Message message; }
     [Serializable] private class Message { public string content; }
 
-    private string TryExtractContent(string rawJson, out string error)
+    private static string TryExtractContent(string rawJson, out string error)
     {
         error = null;
 
         try
         {
             var parsed = JsonUtility.FromJson<GPTResponse>(rawJson);
+
             if (parsed == null || parsed.choices == null || parsed.choices.Length == 0)
             {
                 error = "choices가 비어있거나 응답 구조가 예상과 다릅니다.";
                 return null;
             }
 
-            if (parsed.choices[0] == null || parsed.choices[0].message == null)
+            var msg = parsed.choices[0]?.message;
+            if (msg == null)
             {
                 error = "choices[0].message가 null 입니다.";
                 return null;
             }
 
-            string content = parsed.choices[0].message.content;
-
-            if (string.IsNullOrEmpty(content))
+            if (string.IsNullOrEmpty(msg.content))
             {
                 error = "message.content가 비어있습니다.";
                 return null;
             }
 
-            // 가끔 앞뒤 공백/줄바꿈이 과한 경우 정리
-            return content.Trim();
+            return msg.content;
         }
         catch (Exception e)
         {
@@ -158,8 +186,7 @@ public class GPTManager : MonoBehaviour
         }
     }
 
-    //  JSON 문자열 안전 이스케이프
-  
+ 
     private static string EscapeForJson(string s)
     {
         if (string.IsNullOrEmpty(s)) return "";
@@ -168,6 +195,58 @@ public class GPTManager : MonoBehaviour
             .Replace("\"", "\\\"")
             .Replace("\n", "\\n")
             .Replace("\r", "\\r")
-            .Replace("\t", "\\t");
+            .Replace("\t", "\\t")
+            .Replace("\u2028", "\\u2028")
+            .Replace("\u2029", "\\u2029");
+    }
+
+   
+    public static bool TryExtractJsonObject(string text, out string json)
+    {
+        json = null;
+        if (string.IsNullOrEmpty(text)) return false;
+
+        int start = text.IndexOf('{');
+        int end = text.LastIndexOf('}');
+
+        if (start < 0 || end < 0 || end <= start) return false;
+
+        json = text.Substring(start, end - start + 1).Trim();
+        return true;
+    }
+
+    // 테스트 (JSON)
+  
+    [ContextMenu("GPT Test JSON Call")]
+    public void TestJsonCall()
+    {
+        string prompt =
+@"아래 스키마로 생성해.
+{
+  ""worldName"": ""string"",
+  ""logline"": ""string"",
+  ""storyBeats"": [""string""],
+  ""mercenaries"": [
+    { ""id"": ""m001"", ""name"": ""string"", ""job"": ""string"", ""race"": ""string"", ""trait"": ""string"", ""tagline"": ""string"" }
+  ],
+  ""seed"": ""string""
+}
+조건:
+- storyBeats 8개
+- mercenaries 3명(id m001~m003)
+seed: ""폐허가 된 관문 도시, 용병단 운영""";
+
+        RequestJson(prompt,
+            (json) =>
+            {
+                Debug.Log("[GPT JSON TEST RESULT]");
+                Debug.Log(json);
+            },
+            (err) =>
+            {
+                Debug.LogError("[GPT JSON TEST FAILED]");
+                Debug.LogError(err);
+            }
+        );
     }
 }
